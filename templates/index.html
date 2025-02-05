@@ -86,6 +86,71 @@
         .match-info {
             padding: 0.5rem 0;
         }
+        .bracket-container {
+            display: flex;
+            gap: 40px;
+            padding: 20px;
+            align-items: center;
+        }
+
+        .bracket-round {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bracket-matches {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .bracket-match {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            width: 250px;
+            position: relative;
+        }
+
+        .bracket-match::after {
+            content: '';
+            position: absolute;
+            right: -40px;
+            top: 50%;
+            width: 40px;
+            height: 2px;
+            background-color: #ddd;
+        }
+
+        .bracket-match.final::after {
+            display: none;
+        }
+
+        .team {
+            padding: 5px;
+            margin: 2px 0;
+        }
+
+        .team.winner {
+            background-color: #e8f5e9;
+            font-weight: bold;
+        }
+
+        .match-edit {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+
+        .score-edit {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .score-input {
+            width: 60px !important;
+        }
     </style>
 </head>
 <body>
@@ -174,50 +239,14 @@
                     {% endif %}
                 {% endfor %}
             </div>
-
-            <!-- Playoffs -->
-            <div class="stage-header mt-4">
-                <h3 class="mb-0">Playoffs (BO3)</h3>
-            </div>
-            <div id="playoffMatches">
-                {% for match in matches %}
-                    {% if match.stage == 'semifinal' or match.stage == 'final' %}
-                    <div class="match-card {% if match.completed %}completed{% endif %}">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="match-info flex-grow-1">
-                                <div class="row align-items-center">
-                                    <div class="col-md-3">{{ match.team1.name }}</div>
-                                    <div class="col-md-2 text-center">
-                                        {% if match.completed %}
-                                            {{ match.score1 }} - {{ match.score2 }}
-                                        {% else %}
-                                            <form class="d-flex gap-2 justify-content-center">
-                                                <input type="number" class="form-control form-control-sm score-input" 
-                                                       id="score1_{{ match.id }}" min="0" value="{{ match.score1 }}">
-                                                <input type="number" class="form-control form-control-sm score-input" 
-                                                       id="score2_{{ match.id }}" min="0" value="{{ match.score2 }}">
-                                                <button type="button" class="btn btn-sm btn-primary" 
-                                                        onclick="saveMatchEdit('{{ match.id }}')">Save</button>
-                                            </form>
-                                        {% endif %}
-                                    </div>
-                                    <div class="col-md-3">{{ match.team2.name }}</div>
-                                    <div class="col-md-3">
-                                        <small>{{ match.start_time.strftime('%Y-%m-%d %H:%M') }}</small>
-                                    </div>
-                                    <div class="col-md-1">
-                                        {% if match.completed %}
-                                            <i class="fas fa-edit edit-btn" onclick="editMatch('{{ match.id }}')"></i>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                {% endfor %}
-            </div>
         </div>
+
+        <!-- Add this after the group stage matches section -->
+        <!-- <div class="section">
+            <button type="button" class="btn btn-primary" onclick="generatePlayoffs()">
+                Generate Playoffs
+            </button>
+        </div> -->
 
         <!-- Match Editor Modal -->
         <div class="modal fade" id="matchEditModal" tabindex="-1">
@@ -256,6 +285,85 @@
         <div class="section">
             <h2>Standings</h2>
             <div id="standings"></div>
+            
+            <!-- Generate Playoffs Button -->
+            {% if show_playoff_button %}
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-primary btn-lg" onclick="generatePlayoffs()">
+                    Generate Playoffs
+                </button>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Add this after the group stage matches section -->
+        <div class="section">
+            <h2>Playoff Bracket</h2>
+            <div class="bracket-container">
+                <!-- Group Winners -->
+                <div class="bracket-round">
+                    <div class="bracket-matches">
+                        {% for match in matches %}
+                            {% if match.stage == 'semifinal' %}
+                                <div class="bracket-match">
+                                    <div class="team {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
+                                        {{ match.team1.name }}
+                                        {% if match.completed %}({{ match.score1 }}){% endif %}
+                                    </div>
+                                    <div class="team {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
+                                        {{ match.team2.name }}
+                                        {% if match.completed %}({{ match.score2 }}){% endif %}
+                                    </div>
+                                    {% if not match.completed %}
+                                    <div class="match-edit">
+                                        <form class="score-edit">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score1_{{ match.id }}" min="0" value="{{ match.score1 }}">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score2_{{ match.id }}" min="0" value="{{ match.score2 }}">
+                                            <button type="button" class="btn btn-sm btn-primary" 
+                                                    onclick="saveMatchEdit('{{ match.id }}')">Save</button>
+                                        </form>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Finals -->
+                <div class="bracket-round">
+                    <div class="bracket-matches">
+                        {% for match in matches %}
+                            {% if match.stage == 'final' %}
+                                <div class="bracket-match final">
+                                    <div class="team {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
+                                        {{ match.team1.name }}
+                                        {% if match.completed %}({{ match.score1 }}){% endif %}
+                                    </div>
+                                    <div class="team {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
+                                        {{ match.team2.name }}
+                                        {% if match.completed %}({{ match.score2 }}){% endif %}
+                                    </div>
+                                    {% if not match.completed %}
+                                    <div class="match-edit">
+                                        <form class="score-edit">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score1_{{ match.id }}" min="0" value="{{ match.score1 }}">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score2_{{ match.id }}" min="0" value="{{ match.score2 }}">
+                                            <button type="button" class="btn btn-sm btn-primary" 
+                                                    onclick="saveMatchEdit('{{ match.id }}')">Save</button>
+                                        </form>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -347,7 +455,39 @@
                     score1: score1,
                     score2: score2
                 })
-            }).then(() => location.reload());
+            }).then(response => response.json())
+            .then(data => {
+                if (data.generateFinals) {
+                    return fetch('/generate_finals');
+                }
+            })
+            .then(() => location.reload());
+        }
+
+        function generatePlayoffs() {
+            fetch('/generate_playoffs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Playoffs generated successfully!');
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                });
+        }
+
+        function generateFinals() {
+            fetch('/generate_finals')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Finals generated successfully!');
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                });
         }
 
         // Initial load

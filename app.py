@@ -47,7 +47,22 @@ class Match(db.Model):
 def index():
     teams = Team.query.all()
     matches = Match.query.order_by(Match.start_time).all()
-    return render_template('index.html', teams=teams, matches=matches)
+    
+    # Check if all teams have completed 2 matches
+    show_playoff_button = True
+    for team in teams:
+        if team.matches_played < 2:  # Check if each team has played at least 2 matches
+            show_playoff_button = False
+            break
+            
+    # Don't show button if playoffs already exist
+    if Match.query.filter(Match.stage.in_(['semifinal', 'final'])).first():
+        show_playoff_button = False
+    
+    return render_template('index.html', 
+                         teams=teams, 
+                         matches=matches, 
+                         show_playoff_button=show_playoff_button)
 
 @app.route('/add_team', methods=['POST'])
 def add_team():
@@ -186,45 +201,37 @@ def edit_match(match_id):
     match = Match.query.get_or_404(match_id)
     data = request.get_json()
     
-    # Reset previous statistics if match was completed
-    if match.completed:
-        team1 = match.team1
-        team2 = match.team2
-        
-        team1.matches_played -= 1
-        team2.matches_played -= 1
-        team1.rounds_won -= match.score1
-        team2.rounds_won -= match.score2
-        team1.rounds_lost -= match.score2
-        team2.rounds_lost -= match.score1
-        if match.score1 > match.score2:
-            team1.matches_won -= 1
-        elif match.score2 > match.score1:
-            team2.matches_won -= 1
-    
-    # Update match scores
     match.score1 = int(data['score1'])
     match.score2 = int(data['score2'])
     match.completed = True
     
-    # Update team statistics
-    team1 = match.team1
-    team2 = match.team2
-    
-    team1.matches_played += 1
-    team2.matches_played += 1
-    team1.rounds_won += match.score1
-    team2.rounds_won += match.score2
-    team1.rounds_lost += match.score2
-    team2.rounds_lost += match.score1
-    
-    if match.score1 > match.score2:
-        team1.matches_won += 1
-    elif match.score2 > match.score1:
-        team2.matches_won += 1
+    # Update team statistics only for group stage matches
+    if match.stage == 'group':
+        team1 = match.team1
+        team2 = match.team2
+        
+        team1.matches_played += 1
+        team2.matches_played += 1
+        team1.rounds_won += match.score1
+        team2.rounds_won += match.score2
+        team1.rounds_lost += match.score2
+        team2.rounds_lost += match.score1
+        
+        if match.score1 > match.score2:
+            team1.matches_won += 1
+        elif match.score2 > match.score1:
+            team2.matches_won += 1
     
     db.session.commit()
-    return {'success': True}
+    
+    # Check if all semifinals are completed to generate finals
+    generate_finals = False
+    if match.stage == 'semifinal':
+        semifinal_matches = Match.query.filter_by(stage='semifinal').all()
+        if all(m.completed for m in semifinal_matches):
+            generate_finals = True
+    
+    return {'success': True, 'generateFinals': generate_finals}
 
 @app.route('/delete_match/<int:match_id>', methods=['POST'])
 def delete_match(match_id):
@@ -235,53 +242,109 @@ def delete_match(match_id):
 
 @app.route('/generate_playoffs')
 def generate_playoffs():
+    # Check if all group matches are completed
+    group_matches = Match.query.filter_by(stage='group').all()
+    if not all(match.completed for match in group_matches):
+        return {'success': False, 'message': 'Not all group matches are completed'}
+
     # Get group winners and best second place
     standings = get_standings()
     playoff_teams = []
     
     # Get group winners
     for group in ['A', 'B', 'C']:
-        if group in standings:
-            playoff_teams.append(standings[group][0])  # First place in each group
+        if group in standings and standings[group]:
+            group_winner = Team.query.get(standings[group][0]['id'])
+            playoff_teams.append({
+                'id': group_winner.id,
+                'name': group_winner.name,
+                'matches_won': group_winner.matches_won,
+                'round_difference': group_winner.round_difference,
+                'position': 'winner',
+                'group': group
+            })
     
     # Get best second place
     second_places = []
     for group in ['A', 'B', 'C']:
         if group in standings and len(standings[group]) > 1:
-            second_places.append(standings[group][1])
+            second_team = Team.query.get(standings[group][1]['id'])
+            second_places.append({
+                'id': second_team.id,
+                'name': second_team.name,
+                'matches_won': second_team.matches_won,
+                'round_difference': second_team.round_difference,
+                'group': group
+            })
     
     if second_places:
-        best_second = max(second_places, key=lambda x: (x['matches_won'], x['round_difference']))
+        best_second = max(second_places, 
+                         key=lambda x: (x['matches_won'], x['round_difference']))
         playoff_teams.append(best_second)
     
+    # Sort group winners by performance
+    winners = [t for t in playoff_teams if t.get('position') == 'winner']
+    winners.sort(key=lambda x: (x['matches_won'], x['round_difference']), reverse=True)
+    
     # Generate semifinal matches
-    current_time = datetime.now()
+    current_time = datetime.now() + timedelta(days=1)  # Next day
+    
+    # Delete any existing playoff matches
+    Match.query.filter(Match.stage.in_(['semifinal', 'final'])).delete()
     
     # Semifinal 1: Best group winner vs Best second place
-    # Semifinal 2: Second best group winner vs Third best group winner
-    if len(playoff_teams) == 4:
-        match1 = Match(
-            team1_id=playoff_teams[0]['id'],
-            team2_id=playoff_teams[3]['id'],
-            start_time=current_time,
-            is_bo3=True,
-            stage='semifinal'
-        )
-        current_time += timedelta(hours=3)
-        
-        match2 = Match(
-            team1_id=playoff_teams[1]['id'],
-            team2_id=playoff_teams[2]['id'],
-            start_time=current_time,
-            is_bo3=True,
-            stage='semifinal'
-        )
-        
-        db.session.add(match1)
-        db.session.add(match2)
-        db.session.commit()
+    match1 = Match(
+        team1_id=winners[0]['id'],
+        team2_id=playoff_teams[3]['id'],
+        start_time=current_time,
+        is_bo3=True,
+        stage='semifinal'
+    )
+    current_time += timedelta(hours=3)
     
-    return {'success': True}
+    # Semifinal 2: Second best group winner vs Third best group winner
+    match2 = Match(
+        team1_id=winners[1]['id'],
+        team2_id=winners[2]['id'],
+        start_time=current_time,
+        is_bo3=True,
+        stage='semifinal'
+    )
+    
+    db.session.add(match1)
+    db.session.add(match2)
+    db.session.commit()
+    
+    return {'success': True, 'message': 'Playoffs generated successfully'}
+
+@app.route('/generate_finals')
+def generate_finals():
+    # Check if all semifinal matches are completed
+    semifinal_matches = Match.query.filter_by(stage='semifinal').all()
+    if not all(match.completed for match in semifinal_matches):
+        return {'success': False, 'message': 'Not all semifinal matches are completed'}
+    
+    # Get winners from semifinals
+    finalists = []
+    for match in semifinal_matches:
+        winner_id = match.team1_id if match.score1 > match.score2 else match.team2_id
+        finalists.append(winner_id)
+    
+    # Generate final match
+    current_time = datetime.now() + timedelta(days=2)  # Day after semifinals
+    
+    final_match = Match(
+        team1_id=finalists[0],
+        team2_id=finalists[1],
+        start_time=current_time,
+        is_bo3=True,
+        stage='final'
+    )
+    
+    db.session.add(final_match)
+    db.session.commit()
+    
+    return {'success': True, 'message': 'Finals generated successfully'}
 
 if __name__ == '__main__':
     with app.app_context():
