@@ -118,13 +118,16 @@ def get_standings():
         if team.group not in standings:
             standings[team.group] = []
         standings[team.group].append({
+            'id': team.id,
             'name': team.name,
             'matches_played': team.matches_played,
             'matches_won': team.matches_won,
-            'round_difference': team.round_difference
+            'round_difference': team.round_difference,
+            'rounds_won': team.rounds_won,
+            'rounds_lost': team.rounds_lost
         })
     
-    # Sort teams in each group
+    # Sort teams in each group by matches won, then round difference
     for group in standings:
         standings[group].sort(key=lambda x: (-x['matches_won'], -x['round_difference']))
     
@@ -183,9 +186,42 @@ def edit_match(match_id):
     match = Match.query.get_or_404(match_id)
     data = request.get_json()
     
-    match.start_time = datetime.strptime(data['start_time'], '%Y-%m-%dT%H:%M')
+    # Reset previous statistics if match was completed
+    if match.completed:
+        team1 = match.team1
+        team2 = match.team2
+        
+        team1.matches_played -= 1
+        team2.matches_played -= 1
+        team1.rounds_won -= match.score1
+        team2.rounds_won -= match.score2
+        team1.rounds_lost -= match.score2
+        team2.rounds_lost -= match.score1
+        if match.score1 > match.score2:
+            team1.matches_won -= 1
+        elif match.score2 > match.score1:
+            team2.matches_won -= 1
+    
+    # Update match scores
     match.score1 = int(data['score1'])
     match.score2 = int(data['score2'])
+    match.completed = True
+    
+    # Update team statistics
+    team1 = match.team1
+    team2 = match.team2
+    
+    team1.matches_played += 1
+    team2.matches_played += 1
+    team1.rounds_won += match.score1
+    team2.rounds_won += match.score2
+    team1.rounds_lost += match.score2
+    team2.rounds_lost += match.score1
+    
+    if match.score1 > match.score2:
+        team1.matches_won += 1
+    elif match.score2 > match.score1:
+        team2.matches_won += 1
     
     db.session.commit()
     return {'success': True}

@@ -118,8 +118,12 @@
                             Group {{ group }}
                         </div>
                         <div class="card-body">
-                            <ul class="list-group list-group-flush" id="group{{ group }}">
-                                <!-- Teams will be populated here -->
+                            <ul class="list-group list-group-flush">
+                                {% for team in teams %}
+                                    {% if team.group == group %}
+                                        <li class="list-group-item">{{ team.name }}</li>
+                                                 {% endif %}
+                                {% endfor %}
                             </ul>
                         </div>
                     </div>
@@ -143,23 +147,27 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="match-info flex-grow-1">
                                 <div class="row align-items-center">
-                                    <div class="col-md-4">{{ match.team1.name }}</div>
+                                    <div class="col-md-3">{{ match.team1.name }}</div>
                                     <div class="col-md-2 text-center">
-                                        {% if match.completed %}
+                                        <div id="display_{{ match.id }}">
                                             {{ match.score1 }} - {{ match.score2 }}
-                                        {% else %}
-                                            vs
-                                        {% endif %}
+                                            <button type="button" class="btn btn-sm btn-primary" 
+                                                    onclick="enableEdit('{{ match.id }}')">Edit</button>
+                                        </div>
+                                        <div id="form_{{ match.id }}" style="display: none;">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score1_{{ match.id }}" min="0" value="{{ match.score1 }}">
+                                            <input type="number" class="form-control form-control-sm score-input" 
+                                                   id="score2_{{ match.id }}" min="0" value="{{ match.score2 }}">
+                                            <button type="button" class="btn btn-sm btn-primary" 
+                                                    onclick="saveMatchEdit('{{ match.id }}')">Save</button>
+                                        </div>
                                     </div>
-                                    <div class="col-md-4">{{ match.team2.name }}</div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-3">{{ match.team2.name }}</div>
+                                    <div class="col-md-3">
                                         <small>{{ match.start_time.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="match-actions ms-3">
-                                <i class="fas fa-edit edit-btn" onclick="editMatch('{{ match.id }}')"></i>
-                                <i class="fas fa-trash delete-btn" onclick="deleteMatch('{{ match.id }}')"></i>
                             </div>
                         </div>
                     </div>
@@ -178,23 +186,31 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="match-info flex-grow-1">
                                 <div class="row align-items-center">
-                                    <div class="col-md-4">{{ match.team1.name }}</div>
+                                    <div class="col-md-3">{{ match.team1.name }}</div>
                                     <div class="col-md-2 text-center">
                                         {% if match.completed %}
                                             {{ match.score1 }} - {{ match.score2 }}
                                         {% else %}
-                                            vs
+                                            <form class="d-flex gap-2 justify-content-center">
+                                                <input type="number" class="form-control form-control-sm score-input" 
+                                                       id="score1_{{ match.id }}" min="0" value="{{ match.score1 }}">
+                                                <input type="number" class="form-control form-control-sm score-input" 
+                                                       id="score2_{{ match.id }}" min="0" value="{{ match.score2 }}">
+                                                <button type="button" class="btn btn-sm btn-primary" 
+                                                        onclick="saveMatchEdit('{{ match.id }}')">Save</button>
+                                            </form>
                                         {% endif %}
                                     </div>
-                                    <div class="col-md-4">{{ match.team2.name }}</div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-3">{{ match.team2.name }}</div>
+                                    <div class="col-md-3">
                                         <small>{{ match.start_time.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </div>
+                                    <div class="col-md-1">
+                                        {% if match.completed %}
+                                            <i class="fas fa-edit edit-btn" onclick="editMatch('{{ match.id }}')"></i>
+                                        {% endif %}
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="match-actions ms-3">
-                                <i class="fas fa-edit edit-btn" onclick="editMatch('{{ match.id }}')"></i>
-                                <i class="fas fa-trash delete-btn" onclick="deleteMatch('{{ match.id }}')"></i>
                             </div>
                         </div>
                     </div>
@@ -312,20 +328,25 @@
             }
         }
 
-        function saveMatchEdit() {
-            const matchId = document.getElementById('editMatchId').value;
-            const data = {
-                start_time: document.getElementById('editStartTime').value,
-                score1: document.getElementById('editScore1').value,
-                score2: document.getElementById('editScore2').value
-            };
+        function enableEdit(matchId) {
+            // Hide the display div and show the form
+            document.getElementById(`display_${matchId}`).style.display = 'none';
+            document.getElementById(`form_${matchId}`).style.display = 'flex';
+        }
 
+        function saveMatchEdit(matchId) {
+            const score1 = document.getElementById(`score1_${matchId}`).value;
+            const score2 = document.getElementById(`score2_${matchId}`).value;
+            
             fetch(`/edit_match/${matchId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data)
+                body: JSON.stringify({
+                    score1: score1,
+                    score2: score2
+                })
             }).then(() => location.reload());
         }
 
