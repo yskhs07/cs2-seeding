@@ -115,44 +115,137 @@
         }
 
         .bracket-container {
+            position: relative;
             display: flex;
-            justify-content: space-around;
+            justify-content: space-between;
+            padding: 40px 20px;
             margin-top: 30px;
+            min-height: 500px;
         }
 
         .bracket-round {
-            flex: 1;
-            margin: 0 15px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            width: 45%;
+        }
+
+        .finals {
+            width: 300px;
+            position: absolute;
+            right: 50px;
+            top: 50%;
+            transform: translateY(-50%);
         }
 
         .bracket-match {
-            background: #363636;
+            background: #2d2d2d;
+            border: 2px solid #0d6efd;
             border-radius: 8px;
             padding: 15px;
-            margin-bottom: 20px;
+            margin: 10px 0;
             position: relative;
+            width: 100%;
             transition: all 0.3s ease;
         }
 
         .bracket-match:hover {
-            transform: scale(1.05);
-            z-index: 1;
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(13, 110, 253, 0.3);
         }
 
         .bracket-match.final {
-            background: linear-gradient(45deg, #0d6efd, #0b5ed7);
+            background: linear-gradient(45deg, #1a1a1a, #2d2d2d);
+            border: 2px solid #ffd700;
+        }
+
+        .bracket-line {
+            position: absolute;
+            background: #0d6efd;
+        }
+
+        .line-horizontal {
+            height: 2px;
+        }
+
+        .line-vertical {
+            width: 2px;
+        }
+
+        .team-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            margin: 5px 0;
+            background: #363636;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .team-box:hover {
+            background: #404040;
+        }
+
+        .team-name {
+            font-weight: bold;
+            color: #fff;
+            flex-grow: 1;
+            padding: 0 10px;
+        }
+
+        .team-score {
+            background: #0d6efd;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .winner .team-name {
+            color: #00ff00;
+        }
+
+        .winner .team-score {
+            background: #00aa00;
+        }
+
+        .match-edit {
+            margin-top: 10px;
+        }
+
+        .map-scores {
+            background: #363636;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
         }
 
         .map-score {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            padding: 5px;
             background: #2d2d2d;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 8px;
+            border-radius: 4px;
         }
 
-        .winner {
-            color: #00ff00;
-            font-weight: bold;
+        .map-score small {
+            width: 60px;
+            color: #0d6efd;
+        }
+
+        .score-input {
+            width: 50px !important;
+            text-align: center;
+            margin: 0 5px;
+            background: #404040;
+            color: white;
+            border: 1px solid #0d6efd;
+            border-radius: 4px;
+            padding: 2px 5px;
         }
 
         /* Animations */
@@ -199,6 +292,35 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        .bracket-lines .line-horizontal,
+        .bracket-lines .line-vertical {
+            background: #0d6efd;
+            position: absolute;
+        }
+
+        .line-horizontal {
+            height: 2px;
+        }
+
+        .line-vertical {
+            width: 2px;
+        }
+
+        /* Add animation for the lines */
+        .bracket-lines div {
+            animation: drawLine 1s ease-out forwards;
+            transform-origin: left;
+        }
+
+        @keyframes drawLine {
+            from {
+                transform: scaleX(0);
+            }
+            to {
+                transform: scaleX(1);
+            }
         }
     </style>
 </head>
@@ -339,88 +461,87 @@
             </form>
         </div>
 
-        <!-- Playoff Matches -->
+        <!-- Playoff Bracket Section -->
         <div class="section">
-            <h2>Playoff Bracket</h2>
+            <h2 class="text-center mb-4">Playoff Bracket</h2>
             <div class="bracket-container">
-                <!-- Semifinals (BO3) -->
+                <!-- Semifinals -->
                 <div class="bracket-round">
                     <h4 class="text-center mb-3">Semifinals (BO3)</h4>
-                    <div class="bracket-matches">
-                        {% for match in matches %}
-                            {% if match.stage == 'semifinal' %}
-                                <div class="bracket-match">
-                                    <div class="team {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
-                                        {{ match.team1.name }} {% if match.completed %}({{ match.score1 }}){% endif %}
-                                    </div>
-                                    <div class="team {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
-                                        {{ match.team2.name }} {% if match.completed %}({{ match.score2 }}){% endif %}
-                                    </div>
-                                    <div class="match-edit">
-                                        <button type="button" class="btn btn-sm btn-primary" 
-                                                onclick="toggleEdit('{{ match.id }}')">
-                                            Edit Score
-                                        </button>
-                                        <div id="form_{{ match.id }}" style="display: none;">
-                                            <div class="bo3-scores">
-                                                {% for map_num in range(1, 4) %}
-                                                <div class="map-score">
-                                                    <small>Map {{ map_num }}:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
-                                                </div>
-                                                {% endfor %}
-                                                <button type="button" class="btn btn-sm btn-primary mt-2" 
-                                                        onclick="saveBO3Match('{{ match.id }}')">Save</button>
+                    {% for match in matches %}
+                        {% if match.stage == 'semifinal' %}
+                            <div class="bracket-match">
+                                <div class="team-box {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
+                                    <span class="team-name">{{ match.team1.name }}</span>
+                                    <span class="team-score">{{ match.score1 if match.completed else '-' }}</span>
+                                </div>
+                                <div class="team-box {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
+                                    <span class="team-name">{{ match.team2.name }}</span>
+                                    <span class="team-score">{{ match.score2 if match.completed else '-' }}</span>
+                                </div>
+                                <div class="match-edit">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="toggleEdit('{{ match.id }}')">
+                                        <i class="fas fa-edit"></i> Edit Score
+                                    </button>
+                                    <div id="form_{{ match.id }}" style="display: none;" class="map-scores">
+                                        {% for map_num in range(1, 4) %}
+                                            <div class="map-score">
+                                                <small>Map {{ map_num }}:</small>
+                                                <input type="number" class="score-input" id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                                <input type="number" class="score-input" id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                             </div>
-                                        </div>
+                                        {% endfor %}
+                                        <button type="button" class="btn btn-sm btn-success mt-2" onclick="saveBO3Match('{{ match.id }}')">
+                                            <i class="fas fa-save"></i> Save
+                                        </button>
                                     </div>
                                 </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
                 </div>
 
-                <!-- Finals (BO5) -->
-                <div class="bracket-round">
+                <!-- Finals -->
+                <div class="bracket-round finals">
                     <h4 class="text-center mb-3">Finals (BO5)</h4>
-                    <div class="bracket-matches">
-                        {% for match in matches %}
-                            {% if match.stage == 'final' %}
-                                <div class="bracket-match final">
-                                    <div class="team {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
-                                        {{ match.team1.name }} {% if match.completed %}({{ match.score1 }}){% endif %}
-                                    </div>
-                                    <div class="team {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
-                                        {{ match.team2.name }} {% if match.completed %}({{ match.score2 }}){% endif %}
-                                    </div>
-                                    <div class="match-edit">
-                                        <button type="button" class="btn btn-sm btn-primary" 
-                                                onclick="toggleEdit('{{ match.id }}')">
-                                            Edit Score
-                                        </button>
-                                        <div id="form_{{ match.id }}" style="display: none;">
-                                            <div class="bo5-scores">
-                                                {% for map_num in range(1, 6) %}
-                                                <div class="map-score">
-                                                    <small>Map {{ map_num }}:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
-                                                </div>
-                                                {% endfor %}
-                                                <button type="button" class="btn btn-sm btn-primary mt-2" 
-                                                        onclick="saveBO5Match('{{ match.id }}')">Save</button>
+                    {% for match in matches %}
+                        {% if match.stage == 'final' %}
+                            <div class="bracket-match final">
+                                <div class="team-box {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
+                                    <span class="team-name">{{ match.team1.name }}</span>
+                                    <span class="team-score">{{ match.score1 if match.completed else '-' }}</span>
+                                </div>
+                                <div class="team-box {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
+                                    <span class="team-name">{{ match.team2.name }}</span>
+                                    <span class="team-score">{{ match.score2 if match.completed else '-' }}</span>
+                                </div>
+                                <div class="match-edit">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="toggleEdit('{{ match.id }}')">
+                                        <i class="fas fa-edit"></i> Edit Score
+                                    </button>
+                                    <div id="form_{{ match.id }}" style="display: none;" class="map-scores">
+                                        {% for map_num in range(1, 6) %}
+                                            <div class="map-score">
+                                                <small>Map {{ map_num }}:</small>
+                                                <input type="number" class="score-input" id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                                <input type="number" class="score-input" id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                             </div>
-                                        </div>
+                                        {% endfor %}
+                                        <button type="button" class="btn btn-sm btn-success mt-2" onclick="saveBO5Match('{{ match.id }}')">
+                                            <i class="fas fa-save"></i> Save
+                                        </button>
                                     </div>
                                 </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <!-- Connecting Lines -->
+                <div class="bracket-lines">
+                    <div class="line-horizontal" style="position: absolute; right: 300px; top: 25%; width: 100px;"></div>
+                    <div class="line-vertical" style="position: absolute; right: 300px; top: 25%; height: 50%;"></div>
+                    <div class="line-horizontal" style="position: absolute; right: 300px; top: 75%; width: 100px;"></div>
                 </div>
             </div>
         </div>
