@@ -268,22 +268,18 @@
             <div id="standings"></div>
             
             <!-- Generate Playoffs Button -->
-            {% if show_playoff_button %}
-            <div class="text-center mt-4">
-                <button type="button" class="btn btn-primary btn-lg" onclick="generatePlayoffs()">
-                    Generate Playoffs
-                </button>
-            </div>
-            {% endif %}
+            <form action="{{ url_for('generate_playoffs') }}" method="POST" class="text-center mt-4">
+                <button type="submit" class="btn btn-primary">Generate Playoffs</button>
+            </form>
         </div>
 
-        <!-- Playoff Bracket Section -->
+        <!-- Playoff Matches -->
         <div class="section">
-            <h2>Playoff Bracket (BO3)</h2>
+            <h2>Playoff Bracket</h2>
             <div class="bracket-container">
-                <!-- Semifinals -->
+                <!-- Semifinals (BO3) -->
                 <div class="bracket-round">
-                    <h4 class="text-center mb-3">Semifinals</h4>
+                    <h4 class="text-center mb-3">Semifinals (BO3)</h4>
                     <div class="bracket-matches">
                         {% for match in matches %}
                             {% if match.stage == 'semifinal' %}
@@ -301,27 +297,15 @@
                                         </button>
                                         <div id="form_{{ match.id }}" style="display: none;">
                                             <div class="bo3-scores">
+                                                {% for map_num in range(1, 4) %}
                                                 <div class="map-score">
-                                                    <small>Map 1:</small>
+                                                    <small>Map {{ map_num }}:</small>
                                                     <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map1_{{ match.id }}" min="0" max="16">
+                                                           id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                                     <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map1_{{ match.id }}" min="0" max="16">
+                                                           id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                                 </div>
-                                                <div class="map-score">
-                                                    <small>Map 2:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map2_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map2_{{ match.id }}" min="0" max="16">
-                                                </div>
-                                                <div class="map-score">
-                                                    <small>Map 3:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map3_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map3_{{ match.id }}" min="0" max="16">
-                                                </div>
+                                                {% endfor %}
                                                 <button type="button" class="btn btn-sm btn-primary mt-2" 
                                                         onclick="saveBO3Match('{{ match.id }}')">Save</button>
                                             </div>
@@ -333,9 +317,9 @@
                     </div>
                 </div>
 
-                <!-- Finals -->
+                <!-- Finals (BO5) -->
                 <div class="bracket-round">
-                    <h4 class="text-center mb-3">Finals</h4>
+                    <h4 class="text-center mb-3">Finals (BO5)</h4>
                     <div class="bracket-matches">
                         {% for match in matches %}
                             {% if match.stage == 'final' %}
@@ -352,30 +336,18 @@
                                             Edit Score
                                         </button>
                                         <div id="form_{{ match.id }}" style="display: none;">
-                                            <div class="bo3-scores">
+                                            <div class="bo5-scores">
+                                                {% for map_num in range(1, 6) %}
                                                 <div class="map-score">
-                                                    <small>Map 1:</small>
+                                                    <small>Map {{ map_num }}:</small>
                                                     <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map1_{{ match.id }}" min="0" max="16">
+                                                           id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                                     <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map1_{{ match.id }}" min="0" max="16">
+                                                           id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
                                                 </div>
-                                                <div class="map-score">
-                                                    <small>Map 2:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map2_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map2_{{ match.id }}" min="0" max="16">
-                                                </div>
-                                                <div class="map-score">
-                                                    <small>Map 3:</small>
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score1_map3_{{ match.id }}" min="0" max="16">
-                                                    <input type="number" class="form-control form-control-sm score-input" 
-                                                           id="score2_map3_{{ match.id }}" min="0" max="16">
-                                                </div>
+                                                {% endfor %}
                                                 <button type="button" class="btn btn-sm btn-primary mt-2" 
-                                                        onclick="saveBO3Match('{{ match.id }}')">Save</button>
+                                                        onclick="saveBO5Match('{{ match.id }}')">Save</button>
                                             </div>
                                         </div>
                                     </div>
@@ -513,31 +485,73 @@
 
         function toggleEdit(matchId) {
             const form = document.getElementById(`form_${matchId}`);
-            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            if (form.style.display === 'none') {
+                // Load existing scores when showing the form
+                fetch(`/get_map_scores/${matchId}`)
+                    .then(response => response.json())
+                    .then(scores => {
+                        for (const [key, value] of Object.entries(scores)) {
+                            const input = document.getElementById(`${key}_${matchId}`);
+                            if (input) input.value = value;
+                        }
+                        form.style.display = 'block';
+                    });
+            } else {
+                form.style.display = 'none';
+            }
         }
 
         function saveBO3Match(matchId) {
-            const maps = [1, 2, 3];
-            let totalScore1 = 0;
-            let totalScore2 = 0;
-            
-            // Calculate maps won by each team
-            maps.forEach(mapNum => {
-                const score1 = parseInt(document.getElementById(`score1_map${mapNum}_${matchId}`).value) || 0;
-                const score2 = parseInt(document.getElementById(`score2_map${mapNum}_${matchId}`).value) || 0;
-                if (score1 > score2) totalScore1++;
-                if (score2 > score1) totalScore2++;
-            });
+            const data = {};
+            let mapsWon1 = 0;
+            let mapsWon2 = 0;
 
+            // Get scores from all three maps
+            for (let i = 1; i <= 3; i++) {
+                const score1 = parseInt(document.getElementById(`score1_map${i}_${matchId}`).value) || 0;
+                const score2 = parseInt(document.getElementById(`score2_map${i}_${matchId}`).value) || 0;
+                data[`map${i}_score1`] = score1;
+                data[`map${i}_score2`] = score2;
+                if (score1 > score2) mapsWon1++;
+                if (score2 > score1) mapsWon2++;
+            }
+
+            // Set overall match score (maps won)
+            data.score1 = mapsWon1;
+            data.score2 = mapsWon2;
+
+            saveMatchScore(matchId, data);
+        }
+
+        function saveBO5Match(matchId) {
+            const data = {};
+            let mapsWon1 = 0;
+            let mapsWon2 = 0;
+
+            // Get scores from all five maps
+            for (let i = 1; i <= 5; i++) {
+                const score1 = parseInt(document.getElementById(`score1_map${i}_${matchId}`).value) || 0;
+                const score2 = parseInt(document.getElementById(`score2_map${i}_${matchId}`).value) || 0;
+                data[`map${i}_score1`] = score1;
+                data[`map${i}_score2`] = score2;
+                if (score1 > score2) mapsWon1++;
+                if (score2 > score1) mapsWon2++;
+            }
+
+            // Set overall match score (maps won)
+            data.score1 = mapsWon1;
+            data.score2 = mapsWon2;
+
+            saveMatchScore(matchId, data);
+        }
+
+        function saveMatchScore(matchId, data) {
             fetch(`/edit_match/${matchId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    score1: totalScore1,
-                    score2: totalScore2
-                })
+                body: JSON.stringify(data)
             }).then(response => response.json())
             .then(() => location.reload());
         }

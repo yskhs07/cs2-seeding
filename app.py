@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -33,12 +33,24 @@ class Match(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     team1_id = db.Column(db.Integer, db.ForeignKey('team.id'))
     team2_id = db.Column(db.Integer, db.ForeignKey('team.id'))
-    start_time = db.Column(db.DateTime, nullable=False)
-    is_bo3 = db.Column(db.Boolean, default=False)
-    completed = db.Column(db.Boolean, default=False)
     score1 = db.Column(db.Integer, default=0)
     score2 = db.Column(db.Integer, default=0)
-    stage = db.Column(db.String(20))  # 'group', 'semifinal', 'final'
+    start_time = db.Column(db.DateTime, nullable=False)
+    completed = db.Column(db.Boolean, default=False)
+    stage = db.Column(db.String(20), default='group')
+    is_bo3 = db.Column(db.Boolean, default=True)
+    is_bo5 = db.Column(db.Boolean, default=False)
+    # Map scores
+    map1_score1 = db.Column(db.Integer, default=0)
+    map1_score2 = db.Column(db.Integer, default=0)
+    map2_score1 = db.Column(db.Integer, default=0)
+    map2_score2 = db.Column(db.Integer, default=0)
+    map3_score1 = db.Column(db.Integer, default=0)
+    map3_score2 = db.Column(db.Integer, default=0)
+    map4_score1 = db.Column(db.Integer, default=0)
+    map4_score2 = db.Column(db.Integer, default=0)
+    map5_score1 = db.Column(db.Integer, default=0)
+    map5_score2 = db.Column(db.Integer, default=0)
 
     team1 = db.relationship('Team', foreign_keys=[team1_id])
     team2 = db.relationship('Team', foreign_keys=[team2_id])
@@ -221,39 +233,63 @@ def get_match(match_id):
         'score2': match.score2
     }
 
+@app.route('/get_map_scores/<int:match_id>')
+def get_map_scores(match_id):
+    match = Match.query.get_or_404(match_id)
+    scores = {}
+    max_maps = 5 if match.is_bo5 else 3
+    
+    for i in range(1, max_maps + 1):
+        scores[f'map{i}_score1'] = getattr(match, f'map{i}_score1', 0)
+        scores[f'map{i}_score2'] = getattr(match, f'map{i}_score2', 0)
+    
+    return jsonify(scores)
+
 @app.route('/edit_match/<int:match_id>', methods=['POST'])
 def edit_match(match_id):
-    match = Match.query.get_or_404(match_id)
-    data = request.get_json()
-    
-    match.score1 = int(data['score1'])
-    match.score2 = int(data['score2'])
-    match.completed = True
-    
-    db.session.commit()
-    
-    # Check if semifinals are completed to generate finals
-    generate_finals = False
-    if match.stage == 'semifinal':
-        semifinal_matches = Match.query.filter_by(stage='semifinal').all()
-        if len(semifinal_matches) == 2 and all(m.completed for m in semifinal_matches):
-            # Get winners from semifinals
-            finalists = []
-            for semi_match in semifinal_matches:
-                winner_id = semi_match.team1_id if semi_match.score1 > semi_match.score2 else semi_match.team2_id
-                finalists.append(winner_id)
-            
-            # Create final match
-            final_match = Match(
-                team1_id=finalists[0],
-                team2_id=finalists[1],
-                start_time=datetime.now() + timedelta(days=1),
-                stage='final'
-            )
-            db.session.add(final_match)
-            db.session.commit()
-            
-    return {'success': True}
+    try:
+        match = Match.query.get_or_404(match_id)
+        data = request.get_json()
+        
+        # Update overall match score
+        match.score1 = int(data.get('score1', 0))
+        match.score2 = int(data.get('score2', 0))
+        match.completed = True
+        
+        # Update individual map scores
+        max_maps = 5 if match.is_bo5 else 3
+        for i in range(1, max_maps + 1):
+            setattr(match, f'map{i}_score1', int(data.get(f'map{i}_score1', 0)))
+            setattr(match, f'map{i}_score2', int(data.get(f'map{i}_score2', 0)))
+        
+        db.session.commit()
+        
+        # Generate finals if semifinals are complete
+        if match.stage == 'semifinal' and match.completed:
+            semifinal_matches = Match.query.filter_by(stage='semifinal').all()
+            if len(semifinal_matches) == 2 and all(m.completed for m in semifinal_matches):
+                finalists = []
+                for semi_match in semifinal_matches:
+                    winner_id = semi_match.team1_id if semi_match.score1 > semi_match.score2 else semi_match.team2_id
+                    finalists.append(winner_id)
+                
+                # Create BO5 final match
+                final_match = Match(
+                    team1_id=finalists[0],
+                    team2_id=finalists[1],
+                    start_time=datetime.now() + timedelta(days=1),
+                    stage='final',
+                    is_bo5=True
+                )
+                db.session.add(final_match)
+                db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Error in edit_match: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/delete_match/<int:match_id>', methods=['POST'])
 def delete_match(match_id):
@@ -262,82 +298,56 @@ def delete_match(match_id):
     db.session.commit()
     return {'success': True}
 
-@app.route('/generate_playoffs')
+@app.route('/generate_playoffs', methods=['GET', 'POST'])
 def generate_playoffs():
-    # Check if all group matches are completed
-    group_matches = Match.query.filter_by(stage='group').all()
-    if not all(match.completed for match in group_matches):
-        return {'success': False, 'message': 'Not all group matches are completed'}
-
-    # Get group winners and best second place
-    standings = get_standings()
-    playoff_teams = []
-    
-    # Get group winners
-    for group in ['A', 'B', 'C']:
-        if group in standings and standings[group]:
-            group_winner = Team.query.get(standings[group][0]['id'])
-            playoff_teams.append({
-                'id': group_winner.id,
-                'name': group_winner.name,
-                'matches_won': group_winner.matches_won,
-                'round_difference': group_winner.round_difference,
-                'position': 'winner',
-                'group': group
-            })
-    
-    # Get best second place
-    second_places = []
-    for group in ['A', 'B', 'C']:
-        if group in standings and len(standings[group]) > 1:
-            second_team = Team.query.get(standings[group][1]['id'])
-            second_places.append({
-                'id': second_team.id,
-                'name': second_team.name,
-                'matches_won': second_team.matches_won,
-                'round_difference': second_team.round_difference,
-                'group': group
-            })
-    
-    if second_places:
-        best_second = max(second_places, 
-                         key=lambda x: (x['matches_won'], x['round_difference']))
-        playoff_teams.append(best_second)
-    
-    # Sort group winners by performance
-    winners = [t for t in playoff_teams if t.get('position') == 'winner']
-    winners.sort(key=lambda x: (x['matches_won'], x['round_difference']), reverse=True)
-    
-    # Generate semifinal matches
-    current_time = datetime.now() + timedelta(days=1)  # Next day
-    
-    # Delete any existing playoff matches
-    Match.query.filter(Match.stage.in_(['semifinal', 'final'])).delete()
-    
-    # Semifinal 1: Best group winner vs Best second place
-    match1 = Match(
-        team1_id=winners[0]['id'],
-        team2_id=playoff_teams[3]['id'],
-        start_time=current_time,
-        is_bo3=True,
-        stage='semifinal'
-    )
-    current_time += timedelta(hours=3)
-    
-    # Semifinal 2: Second best group winner vs Third best group winner
-    match2 = Match(
-        team1_id=winners[1]['id'],
-        team2_id=winners[2]['id'],
-        start_time=current_time,
-        is_bo3=True,
-        stage='semifinal'
-    )
-    
-    db.session.add(match1)
-    db.session.add(match2)
-    db.session.commit()
-    
-    return {'success': True, 'message': 'Playoffs generated successfully'}
+    try:
+        # Clear any existing playoff matches
+        Match.query.filter(Match.stage.in_(['semifinal', 'final'])).delete()
+        
+        # Get group winners and runners-up
+        playoff_teams = []
+        for group in ['A', 'B', 'C']:
+            group_teams = Team.query.filter_by(group=group).order_by(
+                Team.matches_won.desc(),
+                (Team.rounds_won - Team.rounds_lost).desc()
+            ).limit(2).all()
+            playoff_teams.extend(group_teams)
+        
+        # Sort teams by wins and round difference for seeding
+        playoff_teams.sort(key=lambda x: (x.matches_won, x.rounds_won - x.rounds_lost), reverse=True)
+        
+        # Generate semifinals (BO3)
+        current_time = datetime.now()
+        semifinal1 = Match(
+            team1_id=playoff_teams[0].id,
+            team2_id=playoff_teams[3].id,
+            start_time=current_time,
+            stage='semifinal',
+            is_bo3=True,
+            is_bo5=False
+        )
+        
+        semifinal2 = Match(
+            team1_id=playoff_teams[1].id,
+            team2_id=playoff_teams[2].id,
+            start_time=current_time + timedelta(hours=1),
+            stage='semifinal',
+            is_bo3=True,
+            is_bo5=False
+        )
+        
+        db.session.add(semifinal1)
+        db.session.add(semifinal2)
+        db.session.commit()
+        
+        flash('Playoffs generated successfully!')
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        print(f"Error generating playoffs: {str(e)}")
+        db.session.rollback()
+        flash('Error generating playoffs')
+        return redirect(url_for('index'))
 
 @app.route('/generate_finals')
 def generate_finals():
