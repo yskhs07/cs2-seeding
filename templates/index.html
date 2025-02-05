@@ -166,8 +166,6 @@
         }
 
         .team-score {
-            background: #00ff00;
-            color: #000;
             width: 30px;
             height: 30px;
             display: flex;
@@ -175,6 +173,15 @@
             justify-content: center;
             border-radius: 4px;
             font-weight: bold;
+            background: #2d2d2d;
+        }
+
+        .score-winner {
+            color: #00ff00;  /* Green color for winning score */
+        }
+
+        .score-loser {
+            color: #ff3333;  /* Red color for losing score */
         }
 
         .team-box:last-child .team-score {
@@ -492,15 +499,33 @@
                             <div class="bracket-match" data-match-id="{{ match.id }}">
                                 <div class="team-box">
                                     <span class="team-name">{{ match.team1.name }}</span>
-                                    <span class="team-score">{{ match.score1 if match.completed else '0' }}</span>
+                                    <span class="team-score {% if match.completed %}{% if match.score1 > match.score2 %}score-winner{% else %}score-loser{% endif %}{% endif %}">
+                                        {{ match.score1 if match.completed else '0' }}
+                                    </span>
                                 </div>
                                 <div class="team-box">
                                     <span class="team-name">{{ match.team2.name }}</span>
-                                    <span class="team-score">{{ match.score2 if match.completed else '0' }}</span>
+                                    <span class="team-score {% if match.completed %}{% if match.score2 > match.score1 %}score-winner{% else %}score-loser{% endif %}{% endif %}">
+                                        {{ match.score2 if match.completed else '0' }}
+                                    </span>
                                 </div>
                                 <button class="edit-score-btn" onclick="toggleEdit('{{ match.id }}')">
                                     <i class="fas fa-edit"></i> Edit Score
                                 </button>
+                                
+                                <!-- Add the form div that will be toggled -->
+                                <div id="form_{{ match.id }}" style="display: none;" class="map-scores">
+                                    {% for map_num in range(1, 4) %}
+                                        <div class="map-score">
+                                            <small>Map {{ map_num }}:</small>
+                                            <input type="number" class="score-input" id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                            <input type="number" class="score-input" id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                        </div>
+                                    {% endfor %}
+                                    <button type="button" class="btn btn-sm btn-success mt-2" onclick="saveBO3Match('{{ match.id }}')">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
                             </div>
                         {% endif %}
                     {% endfor %}
@@ -530,6 +555,20 @@
                                 <button class="edit-score-btn" onclick="toggleEdit('{{ match.id }}')">
                                     <i class="fas fa-edit"></i> Edit Score
                                 </button>
+                                
+                                <!-- Add the form div that will be toggled -->
+                                <div id="form_{{ match.id }}" style="display: none;" class="map-scores">
+                                    {% for map_num in range(1, 6) %}
+                                        <div class="map-score">
+                                            <small>Map {{ map_num }}:</small>
+                                            <input type="number" class="score-input" id="score1_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                            <input type="number" class="score-input" id="score2_map{{ map_num }}_{{ match.id }}" min="0" max="16">
+                                        </div>
+                                    {% endfor %}
+                                    <button type="button" class="btn btn-sm btn-success mt-2" onclick="saveBO5Match('{{ match.id }}')">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
                             </div>
                         {% endif %}
                     {% endfor %}
@@ -687,22 +726,22 @@
 
         function toggleEdit(matchId) {
             const form = document.getElementById(`form_${matchId}`);
-            if (form.style.display === 'none') {
-                document.querySelector('.loading').style.display = 'block';
-                fetch(`/get_map_scores/${matchId}`)
-                    .then(response => response.json())
-                    .then(scores => {
-                        for (const [key, value] of Object.entries(scores)) {
-                            const input = document.getElementById(`${key}_${matchId}`);
-                            if (input) input.value = value;
-                        }
-                        form.style.display = 'block';
-                        document.querySelector('.loading').style.display = 'none';
-                    });
-            } else {
-                form.style.display = 'none';
+            if (form) {
+                if (form.style.display === 'none' || !form.style.display) {
+                    form.style.display = 'block';
+                } else {
+                    form.style.display = 'none';
+                }
             }
         }
+
+        // Add this to ensure proper form display
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize all forms as hidden
+            document.querySelectorAll('[id^="form_"]').forEach(form => {
+                form.style.display = 'none';
+            });
+        });
 
         function saveBO3Match(matchId) {
             const data = {};
