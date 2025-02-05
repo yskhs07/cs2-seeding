@@ -760,10 +760,6 @@
             let mapsWon1 = 0;
             let mapsWon2 = 0;
 
-            // Store the clicked button's position before the update
-            const matchElement = document.getElementById(`form_${matchId}`).closest('.bracket-match');
-            const matchPosition = matchElement.getBoundingClientRect().top + window.pageYOffset;
-
             // Get scores from all three maps
             for (let i = 1; i <= 3; i++) {
                 const score1 = parseInt(document.getElementById(`score1_map${i}_${matchId}`).value) || 0;
@@ -774,7 +770,8 @@
                 if (score2 > score1) mapsWon2++;
             }
 
-            // Set overall match score (maps won)
+            // Only set the match as completed if one team has won 2 maps
+            data.completed = (mapsWon1 >= 2 || mapsWon2 >= 2);
             data.score1 = mapsWon1;
             data.score2 = mapsWon2;
 
@@ -784,16 +781,23 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(data)
-            }).then(response => response.json())
-            .then(() => {
-                location.reload();
-                // After reload, scroll back to the match position
-                window.addEventListener('load', () => {
-                    window.scrollTo({
-                        top: matchPosition - 100, // 100px offset for better visibility
-                        behavior: 'smooth'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Check if both semifinals are completed before reloading
+                    fetch('/check_semifinals_status')
+                    .then(response => response.json())
+                    .then(statusData => {
+                        if (statusData.both_completed) {
+                            // Both semifinals are done, generate finals
+                            fetch('/generate_finals', { method: 'POST' })
+                            .then(() => location.reload());
+                        } else {
+                            location.reload();
+                        }
                     });
-                });
+                }
             });
         }
 

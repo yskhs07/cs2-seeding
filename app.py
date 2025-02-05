@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import List
+import random  # Add this at the top with other imports
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key_here'
@@ -188,40 +189,56 @@ def get_standings():
 
 @app.route('/setup_tournament', methods=['POST'])
 def setup_tournament():
-    # Clear existing tournament data
-    db.session.query(Match).delete()
-    db.session.query(Team).delete()
-    
-    # Create teams and assign to groups
-    teams = []
-    for i in range(9):
-        team_name = request.form.get(f'team{i}')
-        group = chr(65 + (i // 3))  # A, B, or C
-        team = Team(name=team_name, group=group)
-        teams.append(team)
-        db.session.add(team)
-    
-    db.session.commit()
-    
-    # Generate group stage matches
-    current_time = datetime.now()
-    for group in ['A', 'B', 'C']:
-        group_teams = [t for t in teams if t.group == group]
-        # Generate round-robin matches - each team plays against others once
-        for i in range(len(group_teams)):
-            for j in range(i + 1, len(group_teams)):  # This ensures each pair plays only once
-                match = Match(
-                    team1_id=group_teams[i].id,
-                    team2_id=group_teams[j].id,
-                    start_time=current_time,
-                    stage='group'
-                )
-                db.session.add(match)
-                current_time += timedelta(hours=1)
-    
-    db.session.commit()
-    flash('Tournament setup completed!')
-    return redirect(url_for('index'))
+    try:
+        # Clear existing tournament data
+        db.session.query(Match).delete()
+        db.session.query(Team).delete()
+        
+        # Get all team names and shuffle them
+        team_names = []
+        for i in range(9):
+            team_name = request.form.get(f'team{i}')
+            if team_name:
+                team_names.append(team_name)
+        
+        # Shuffle the team names randomly
+        random.shuffle(team_names)
+        
+        # Create teams and assign to groups
+        teams = []
+        for i, team_name in enumerate(team_names):
+            group = chr(65 + (i // 3))  # A, B, or C
+            team = Team(name=team_name, group=group)
+            teams.append(team)
+            db.session.add(team)
+        
+        db.session.commit()
+        
+        # Generate group stage matches
+        current_time = datetime.now()
+        for group in ['A', 'B', 'C']:
+            group_teams = [t for t in teams if t.group == group]
+            # Generate round-robin matches - each team plays against others once
+            for i in range(len(group_teams)):
+                for j in range(i + 1, len(group_teams)):
+                    match = Match(
+                        team1_id=group_teams[i].id,
+                        team2_id=group_teams[j].id,
+                        start_time=current_time,
+                        stage='group'
+                    )
+                    db.session.add(match)
+                    current_time += timedelta(hours=1)
+        
+        db.session.commit()
+        flash('Tournament setup completed!')
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        print(f"Error in setup_tournament: {str(e)}")
+        db.session.rollback()
+        flash('Error setting up tournament')
+        return redirect(url_for('index'))
 
 @app.route('/get_match/<int:match_id>')
 def get_match(match_id):
@@ -254,7 +271,7 @@ def edit_match(match_id):
         # Update overall match score
         match.score1 = int(data.get('score1', 0))
         match.score2 = int(data.get('score2', 0))
-        match.completed = True
+        match.completed = data.get('completed', False)
         
         # Update individual map scores
         max_maps = 5 if match.is_bo5 else 3
@@ -264,25 +281,38 @@ def edit_match(match_id):
         
         db.session.commit()
         
-        # Generate finals if semifinals are complete
+        # Only check for finals generation if this was a semifinal match
         if match.stage == 'semifinal' and match.completed:
+            # Check if both semifinals are complete with valid scores
             semifinal_matches = Match.query.filter_by(stage='semifinal').all()
-            if len(semifinal_matches) == 2 and all(m.completed for m in semifinal_matches):
-                finalists = []
-                for semi_match in semifinal_matches:
-                    winner_id = semi_match.team1_id if semi_match.score1 > semi_match.score2 else semi_match.team2_id
-                    finalists.append(winner_id)
+            both_completed = True
+            
+            if len(semifinal_matches) == 2:
+                for semi in semifinal_matches:
+                    if not semi.completed or not (semi.score1 >= 2 or semi.score2 >= 2):
+                        both_completed = False
+                        break
                 
-                # Create BO5 final match
-                final_match = Match(
-                    team1_id=finalists[0],
-                    team2_id=finalists[1],
-                    start_time=datetime.now() + timedelta(days=1),
-                    stage='final',
-                    is_bo5=True
-                )
-                db.session.add(final_match)
-                db.session.commit()
+                # Only generate finals if both semifinals are complete and finals don't exist
+                if both_completed:
+                    existing_final = Match.query.filter_by(stage='final').first()
+                    if not existing_final:
+                        # Get winners from semifinals
+                        winners = []
+                        for semi in semifinal_matches:
+                            winner = semi.team1 if semi.score1 > semi.score2 else semi.team2
+                            winners.append(winner)
+                        
+                        # Create finals match
+                        finals_match = Match(
+                            team1=winners[0],
+                            team2=winners[1],
+                            stage='final',
+                            is_bo5=True,
+                            start_time=datetime.now()
+                        )
+                        db.session.add(finals_match)
+                        db.session.commit()
         
         return jsonify({'success': True})
         
@@ -349,34 +379,58 @@ def generate_playoffs():
         flash('Error generating playoffs')
         return redirect(url_for('index'))
 
-@app.route('/generate_finals')
-def generate_finals():
-    # Check if all semifinal matches are completed
+@app.route('/check_semifinals_status')
+def check_semifinals_status():
+    # Get all semifinal matches
     semifinal_matches = Match.query.filter_by(stage='semifinal').all()
-    if not all(match.completed for match in semifinal_matches):
-        return {'success': False, 'message': 'Not all semifinal matches are completed'}
     
-    # Get winners from semifinals
-    finalists = []
-    for match in semifinal_matches:
-        winner_id = match.team1_id if match.score1 > match.score2 else match.team2_id
-        finalists.append(winner_id)
+    # Check if both semifinals are completed and have valid scores
+    both_completed = True
+    if len(semifinal_matches) == 2:
+        for match in semifinal_matches:
+            if not match.completed:
+                both_completed = False
+            else:
+                # Verify one team has won (2-0 or 2-1)
+                if not (match.score1 >= 2 or match.score2 >= 2):
+                    both_completed = False
+    else:
+        both_completed = False
     
-    # Generate final match
-    current_time = datetime.now() + timedelta(days=2)  # Day after semifinals
+    return jsonify({'both_completed': both_completed})
+
+@app.route('/generate_finals', methods=['POST'])
+def generate_finals():
+    # Only generate finals if it doesn't exist yet
+    existing_final = Match.query.filter_by(stage='final').first()
+    if existing_final:
+        return jsonify({'success': False, 'message': 'Finals already exist'})
+
+    # Get completed semifinals
+    semifinal_matches = Match.query.filter_by(stage='semifinal', completed=True).all()
     
-    final_match = Match(
-        team1_id=finalists[0],
-        team2_id=finalists[1],
-        start_time=current_time,
-        is_bo3=True,
-        stage='final'
-    )
+    if len(semifinal_matches) == 2:
+        # Get winners from each semifinal
+        winners = []
+        for match in semifinal_matches:
+            winner = match.team1 if match.score1 > match.score2 else match.team2
+            winners.append(winner)
+        
+        # Create finals match
+        finals_match = Match(
+            team1=winners[0],
+            team2=winners[1],
+            stage='final',
+            score1=0,
+            score2=0,
+            completed=False
+        )
+        db.session.add(finals_match)
+        db.session.commit()
+        
+        return jsonify({'success': True})
     
-    db.session.add(final_match)
-    db.session.commit()
-    
-    return {'success': True, 'message': 'Finals generated successfully'}
+    return jsonify({'success': False, 'message': 'Not all semifinals are completed'})
 
 if __name__ == '__main__':
     with app.app_context():
