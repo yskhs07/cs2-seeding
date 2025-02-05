@@ -96,32 +96,58 @@ def add_match():
 
 @app.route('/update_score/<int:match_id>', methods=['POST'])
 def update_score(match_id):
-    match = Match.query.get_or_404(match_id)
-    score1 = int(request.form.get('score1'))
-    score2 = int(request.form.get('score2'))
-    
-    match.score1 = score1
-    match.score2 = score2
-    match.completed = True
-    
-    # Update team statistics
-    team1 = match.team1
-    team2 = match.team2
-    
-    team1.matches_played += 1
-    team2.matches_played += 1
-    team1.rounds_won += score1
-    team2.rounds_won += score2
-    team1.rounds_lost += score2
-    team2.rounds_lost += score1
-    
-    if score1 > score2:
-        team1.matches_won += 1
-    else:
-        team2.matches_won += 1
-    
-    db.session.commit()
-    flash('Score updated successfully!')
+    try:
+        match = Match.query.get_or_404(match_id)
+        print(f"Updating match {match_id}")
+        
+        if match.stage == 'group':
+            score1 = int(request.form.get('score1', 0))
+            score2 = int(request.form.get('score2', 0))
+            print(f"Received scores: {score1} - {score2}")
+            
+            # Update match scores
+            match.score1 = score1
+            match.score2 = score2
+            match.completed = True
+            
+            # First, reset all team statistics
+            teams = Team.query.all()
+            for team in teams:
+                team.matches_played = 0
+                team.matches_won = 0
+                team.rounds_won = 0
+                team.rounds_lost = 0
+            
+            # Then recalculate from all completed matches
+            group_matches = Match.query.filter_by(stage='group', completed=True).all()
+            print(f"Recalculating stats from {len(group_matches)} completed matches")
+            
+            for m in group_matches:
+                # Update matches played
+                m.team1.matches_played += 1
+                m.team2.matches_played += 1
+                
+                # Update rounds won/lost
+                m.team1.rounds_won += m.score1
+                m.team2.rounds_won += m.score2
+                m.team1.rounds_lost += m.score2
+                m.team2.rounds_lost += m.score1
+                
+                # Update matches won
+                if m.score1 > m.score2:
+                    m.team1.matches_won += 1
+                elif m.score2 > m.score1:
+                    m.team2.matches_won += 1
+            
+            db.session.commit()
+            print("Database commit successful")
+            flash('Score updated successfully!')
+            
+    except Exception as e:
+        print(f"Error in update_score: {str(e)}")
+        db.session.rollback()
+        flash('Error updating score')
+        
     return redirect(url_for('index'))
 
 @app.route('/get_standings')
@@ -169,14 +195,13 @@ def setup_tournament():
     current_time = datetime.now()
     for group in ['A', 'B', 'C']:
         group_teams = [t for t in teams if t.group == group]
-        # Generate round-robin matches
+        # Generate round-robin matches - each team plays against others once
         for i in range(len(group_teams)):
-            for j in range(i + 1, len(group_teams)):
+            for j in range(i + 1, len(group_teams)):  # This ensures each pair plays only once
                 match = Match(
                     team1_id=group_teams[i].id,
                     team2_id=group_teams[j].id,
                     start_time=current_time,
-                    is_bo3=False,
                     stage='group'
                 )
                 db.session.add(match)
