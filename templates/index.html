@@ -58,7 +58,11 @@
 
         .team-name {
             font-weight: bold;
-            color: #0d6efd;
+            color: #fff;
+        }
+
+        .team-name.winner {
+            color: #00ff00;  /* Green color for winning team name */
         }
 
         .score-input {
@@ -418,20 +422,28 @@
             {% for match in matches %}
                 {% if match.stage == 'group' %}
                 <div class="match-card">
-                    <form action="{{ url_for('update_score', match_id=match.id) }}" method="POST">
-                        <div class="row align-items-center">
-                            <div class="col-md-4">{{ match.team1.name }}</div>
+                    <div class="row align-items-center">
+                        <form action="{{ url_for('update_score', match_id=match.id) }}" method="POST" class="row align-items-center w-100">
                             <div class="col-md-4">
+                                <span class="team-name {% if match.completed and match.score1 > match.score2 %}winner{% endif %}">
+                                    {{ match.team1.name }}
+                                </span>
+                            </div>
+                            <div class="col-md-4 text-center">
                                 <input type="number" name="score1" class="form-control form-control-sm d-inline w-25" 
                                        value="{{ match.score1 }}" required min="0">
-                                vs
+                                <span class="mx-2">vs</span>
                                 <input type="number" name="score2" class="form-control form-control-sm d-inline w-25" 
                                        value="{{ match.score2 }}" required min="0">
-                                <button type="submit" class="btn btn-primary btn-sm">Update Score</button>
+                                <button type="submit" class="btn btn-primary btn-sm ms-2">Update Score</button>
                             </div>
-                            <div class="col-md-4">{{ match.team2.name }}</div>
-                        </div>
-                    </form>
+                            <div class="col-md-4">
+                                <span class="team-name {% if match.completed and match.score2 > match.score1 %}winner{% endif %}">
+                                    {{ match.team2.name }}
+                                </span>
+                            </div>
+                        </form>
+                    </div>
                 </div>
                 {% endif %}
             {% endfor %}
@@ -870,6 +882,46 @@
                 });
             }
         });
+
+        // Update the form submission handler
+        document.querySelectorAll('.match-card form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                fetch(this.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(response => {
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                    } else {
+                        return response.json().then(data => {
+                            if (data.success) {
+                                location.reload();
+                            } else {
+                                console.error('Error updating score');
+                            }
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+        });
+
+        // Remove any existing alerts after 3 seconds
+        setTimeout(() => {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                alert.style.display = 'none';
+            });
+        }, 3000);
     </script>
 </body>
 </html>
