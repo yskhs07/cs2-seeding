@@ -205,33 +205,30 @@ def edit_match(match_id):
     match.score2 = int(data['score2'])
     match.completed = True
     
-    # Update team statistics only for group stage matches
-    if match.stage == 'group':
-        team1 = match.team1
-        team2 = match.team2
-        
-        team1.matches_played += 1
-        team2.matches_played += 1
-        team1.rounds_won += match.score1
-        team2.rounds_won += match.score2
-        team1.rounds_lost += match.score2
-        team2.rounds_lost += match.score1
-        
-        if match.score1 > match.score2:
-            team1.matches_won += 1
-        elif match.score2 > match.score1:
-            team2.matches_won += 1
-    
     db.session.commit()
     
-    # Check if all semifinals are completed to generate finals
+    # Check if semifinals are completed to generate finals
     generate_finals = False
     if match.stage == 'semifinal':
         semifinal_matches = Match.query.filter_by(stage='semifinal').all()
-        if all(m.completed for m in semifinal_matches):
-            generate_finals = True
-    
-    return {'success': True, 'generateFinals': generate_finals}
+        if len(semifinal_matches) == 2 and all(m.completed for m in semifinal_matches):
+            # Get winners from semifinals
+            finalists = []
+            for semi_match in semifinal_matches:
+                winner_id = semi_match.team1_id if semi_match.score1 > semi_match.score2 else semi_match.team2_id
+                finalists.append(winner_id)
+            
+            # Create final match
+            final_match = Match(
+                team1_id=finalists[0],
+                team2_id=finalists[1],
+                start_time=datetime.now() + timedelta(days=1),
+                stage='final'
+            )
+            db.session.add(final_match)
+            db.session.commit()
+            
+    return {'success': True}
 
 @app.route('/delete_match/<int:match_id>', methods=['POST'])
 def delete_match(match_id):
