@@ -70,23 +70,8 @@ class Match(db.Model):
 @app.route('/')
 def index():
     teams = Team.query.all()
-    matches = Match.query.order_by(Match.start_time).all()
-    
-    # Check if all teams have completed 2 matches
-    show_playoff_button = True
-    for team in teams:
-        if team.matches_played < 2:  # Check if each team has played at least 2 matches
-            show_playoff_button = False
-            break
-            
-    # Don't show button if playoffs already exist
-    if Match.query.filter(Match.stage.in_(['semifinal', 'final'])).first():
-        show_playoff_button = False
-    
-    return render_template('index.html', 
-                         teams=teams, 
-                         matches=matches, 
-                         show_playoff_button=show_playoff_button)
+    matches = Match.query.all()
+    return render_template('index.html', teams=teams, matches=matches)
 
 @app.route('/add_team', methods=['POST'])
 def add_team():
@@ -477,15 +462,13 @@ def generate_finals():
 @app.route('/reset_tournament', methods=['POST'])
 def reset_tournament():
     try:
-        # Delete all matches and reset team statistics
+        # Delete all matches
         db.session.query(Match).delete()
-        teams = Team.query.all()
-        for team in teams:
-            team.matches_played = 0
-            team.matches_won = 0
-            team.rounds_won = 0
-            team.rounds_lost = 0
-            team.group = None
+        
+        # Delete all teams
+        db.session.query(Team).delete()
+        
+        # Commit the changes
         db.session.commit()
         flash('Tournament reset successfully!')
     except Exception as e:

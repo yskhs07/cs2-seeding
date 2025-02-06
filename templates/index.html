@@ -387,7 +387,7 @@
                             <div class="card-header">
                                 <input type="text" name="team{{ i }}" class="form-control" 
                                        placeholder="Team {{ i + 1 }}" 
-                                       value="{{ teams[i].name if teams|length > i else '' }}"
+                                       value="{{ teams[i].name if teams and teams|length > i else '' }}"
                                        required>
                             </div>
                             <div class="card-body">
@@ -395,13 +395,13 @@
                                 <div class="input-group mb-2">
                                     <input type="text" name="team{{ i }}_player{{ j+1 }}" 
                                            class="form-control" placeholder="Player {{ j + 1 }}"
-                                           value="{{ teams[i]|attr('player' ~ (j+1)) if teams|length > i else '' }}">
+                                           value="{{ teams[i]|attr('player' ~ (j+1)) if teams and teams|length > i else '' }}">
                                     <div class="input-group-append">
                                         <div class="input-group-text">
                                             <input type="radio" name="team{{ i }}_captain" 
                                                    value="{{ j+1 }}" 
-                                                   {% if teams|length > i and teams[i].captain == j+1 %}checked{% endif %}
-                                                   {% if j == 0 and (teams|length <= i or not teams[i].captain) %}checked{% endif %}>
+                                                   {% if teams and teams|length > i and teams[i].captain == j+1 %}checked{% endif %}
+                                                   {% if j == 0 and (not teams or teams|length <= i or not teams[i].captain) %}checked{% endif %}>
                                             C
                                         </div>
                                     </div>
@@ -414,13 +414,15 @@
                 </div>
                 <div class="d-flex justify-content-between">
                     <button type="submit" class="btn btn-primary">Generate Groups & Schedule</button>
-                    <form action="{{ url_for('reset_tournament') }}" method="POST" class="d-inline">
-                        <button type="submit" class="btn btn-danger" 
-                                onclick="return confirm('Are you sure you want to reset the tournament? This will delete all matches and group assignments.')">
-                            Reset Tournament
-                        </button>
-                    </form>
                 </div>
+            </form>
+            
+            <!-- Separate form for reset button -->
+            <form action="{{ url_for('reset_tournament') }}" method="POST" class="mt-3">
+                <button type="submit" class="btn btn-danger" 
+                        onclick="return confirm('Are you sure you want to reset the tournament? This will delete all matches and group assignments.')">
+                    Reset Tournament
+                </button>
             </form>
         </div>
 
@@ -669,8 +671,7 @@
                     let html = '';
                     
                     for (const [group, teams] of Object.entries(data)) {
-                        html += `
-                            <div class="card mb-3">
+                        html += `                            <div class="card mb-3">
                                 <div class="card-header bg-primary text-white">
                                     <h3 class="mb-0">Group ${group}</h3>
                                 </div>
