@@ -1,6 +1,7 @@
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import List
@@ -9,7 +10,10 @@ import random  # Add this at the top with other imports
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tournament.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 class Team(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -19,6 +23,13 @@ class Team(db.Model):
     rounds_won = db.Column(db.Integer, default=0)
     rounds_lost = db.Column(db.Integer, default=0)
     matches_won = db.Column(db.Integer, default=0)
+    # Add player fields
+    player1 = db.Column(db.String(100))
+    player2 = db.Column(db.String(100))
+    player3 = db.Column(db.String(100))
+    player4 = db.Column(db.String(100))
+    player5 = db.Column(db.String(100))
+    captain = db.Column(db.Integer)  # 1-5 representing which player is captain
 
     @property
     def round_difference(self):
@@ -190,34 +201,65 @@ def get_standings():
 @app.route('/setup_tournament', methods=['POST'])
 def setup_tournament():
     try:
-        # Clear existing tournament data
+        # Don't clear team data anymore, only matches
         db.session.query(Match).delete()
-        db.session.query(Team).delete()
         
-        # Get all team names and shuffle them
+        # Get all team names and player information
         team_names = []
+        team_players = []
+        team_captains = []
+        
         for i in range(9):
             team_name = request.form.get(f'team{i}')
             if team_name:
+                players = []
+                for j in range(5):
+                    player = request.form.get(f'team{i}_player{j+1}', '')
+                    players.append(player)
+                captain = request.form.get(f'team{i}_captain', 1)
+                
                 team_names.append(team_name)
+                team_players.append(players)
+                team_captains.append(captain)
         
-        # Shuffle the team names randomly
-        random.shuffle(team_names)
+        # Shuffle the teams randomly
+        indices = list(range(len(team_names)))
+        random.shuffle(indices)
         
-        # Create teams and assign to groups
-        teams = []
-        for i, team_name in enumerate(team_names):
-            group = chr(65 + (i // 3))  # A, B, or C
-            team = Team(name=team_name, group=group)
-            teams.append(team)
-            db.session.add(team)
+        # Create or update teams and assign to groups
+        for idx in indices:
+            # Assign groups (A, B, C) based on index
+            group = chr(65 + (idx // 3))  # A, B, or C based on division by 3
+            
+            # Try to find existing team
+            team = Team.query.filter_by(name=team_names[idx]).first()
+            if team:
+                team.group = group
+                team.player1 = team_players[idx][0]
+                team.player2 = team_players[idx][1]
+                team.player3 = team_players[idx][2]
+                team.player4 = team_players[idx][3]
+                team.player5 = team_players[idx][4]
+                team.captain = team_captains[idx]
+            else:
+                team = Team(
+                    name=team_names[idx],
+                    group=group,
+                    player1=team_players[idx][0],
+                    player2=team_players[idx][1],
+                    player3=team_players[idx][2],
+                    player4=team_players[idx][3],
+                    player5=team_players[idx][4],
+                    captain=team_captains[idx]
+                )
+                db.session.add(team)
         
         db.session.commit()
         
         # Generate group stage matches
         current_time = datetime.now()
         for group in ['A', 'B', 'C']:
-            group_teams = [t for t in teams if t.group == group]
+            group_teams = Team.query.filter_by(group=group).all()
             # Generate round-robin matches - each team plays against others once
             for i in range(len(group_teams)):
                 for j in range(i + 1, len(group_teams)):
@@ -431,6 +473,26 @@ def generate_finals():
         return jsonify({'success': True})
     
     return jsonify({'success': False, 'message': 'Not all semifinals are completed'})
+
+@app.route('/reset_tournament', methods=['POST'])
+def reset_tournament():
+    try:
+        # Delete all matches and reset team statistics
+        db.session.query(Match).delete()
+        teams = Team.query.all()
+        for team in teams:
+            team.matches_played = 0
+            team.matches_won = 0
+            team.rounds_won = 0
+            team.rounds_lost = 0
+            team.group = None
+        db.session.commit()
+        flash('Tournament reset successfully!')
+    except Exception as e:
+        print(f"Error in reset_tournament: {str(e)}")
+        db.session.rollback()
+        flash('Error resetting tournament')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     with app.app_context():

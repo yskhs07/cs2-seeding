@@ -382,12 +382,45 @@
             <form id="setupForm" action="{{ url_for('setup_tournament') }}" method="POST">
                 <div class="row">
                     {% for i in range(9) %}
-                    <div class="col-md-4 mb-3">
-                        <input type="text" name="team{{ i }}" class="form-control" placeholder="Team {{ i + 1 }}" required>
+                    <div class="col-md-4 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <input type="text" name="team{{ i }}" class="form-control" 
+                                       placeholder="Team {{ i + 1 }}" 
+                                       value="{{ teams[i].name if teams|length > i else '' }}"
+                                       required>
+                            </div>
+                            <div class="card-body">
+                                {% for j in range(5) %}
+                                <div class="input-group mb-2">
+                                    <input type="text" name="team{{ i }}_player{{ j+1 }}" 
+                                           class="form-control" placeholder="Player {{ j + 1 }}"
+                                           value="{{ teams[i]|attr('player' ~ (j+1)) if teams|length > i else '' }}">
+                                    <div class="input-group-append">
+                                        <div class="input-group-text">
+                                            <input type="radio" name="team{{ i }}_captain" 
+                                                   value="{{ j+1 }}" 
+                                                   {% if teams|length > i and teams[i].captain == j+1 %}checked{% endif %}
+                                                   {% if j == 0 and (teams|length <= i or not teams[i].captain) %}checked{% endif %}>
+                                            C
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
-                <button type="submit" class="btn btn-primary">Generate Groups & Schedule</button>
+                <div class="d-flex justify-content-between">
+                    <button type="submit" class="btn btn-primary">Generate Groups & Schedule</button>
+                    <form action="{{ url_for('reset_tournament') }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-danger" 
+                                onclick="return confirm('Are you sure you want to reset the tournament? This will delete all matches and group assignments.')">
+                            Reset Tournament
+                        </button>
+                    </form>
+                </div>
             </form>
         </div>
 
@@ -405,8 +438,20 @@
                             <ul class="list-group list-group-flush">
                                 {% for team in teams %}
                                     {% if team.group == group %}
-                                        <li class="list-group-item">{{ team.name }}</li>
-                                                 {% endif %}
+                                        <li class="list-group-item">
+                                            <h5>{{ team.name }}</h5>
+                                            {% if team.player1 or team.player2 or team.player3 or team.player4 or team.player5 %}
+                                                <small class="text-muted">
+                                                    {% for i in range(1, 6) %}
+                                                        {% set player = team|attr('player' ~ i) %}
+                                                        {% if player %}
+                                                            {{ player }}{% if team.captain == i %} (C){% endif %}{% if not loop.last and team|attr('player' ~ (loop.index + 1)) %}, {% endif %}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                </small>
+                                            {% endif %}
+                                        </li>
+                                    {% endif %}
                                 {% endfor %}
                             </ul>
                         </div>
