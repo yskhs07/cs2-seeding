@@ -358,26 +358,45 @@ def delete_match(match_id):
 @app.route('/generate_playoffs', methods=['GET', 'POST'])
 def generate_playoffs():
     try:
+        if request.method == 'GET':
+            # Get group winners and runners-up
+            playoff_teams = []
+            second_place_teams = []
+            for group in ['A', 'B', 'C']:
+                group_teams = Team.query.filter_by(group=group).order_by(
+                    Team.matches_won.desc(),
+                    (Team.rounds_won - Team.rounds_lost).desc()
+                ).limit(2).all()
+                
+                if len(group_teams) >= 1:
+                    playoff_teams.append(group_teams[0])  # Add group winner
+                if len(group_teams) >= 2:
+                    second_place_teams.append(group_teams[1])  # Add runner-up
+            
+            return render_template('playoffs_setup.html', 
+                                 group_winners=playoff_teams,
+                                 second_place_teams=second_place_teams)
+        
+        # Handle POST request
         # Clear any existing playoff matches
         Match.query.filter(Match.stage.in_(['semifinal', 'final'])).delete()
         
-        # Get group winners and runners-up
-        playoff_teams = []
-        for group in ['A', 'B', 'C']:
-            group_teams = Team.query.filter_by(group=group).order_by(
-                Team.matches_won.desc(),
-                (Team.rounds_won - Team.rounds_lost).desc()
-            ).limit(2).all()
-            playoff_teams.extend(group_teams)
+        # Get selected teams
+        team_ids = []
+        for i in range(4):
+            team_id = request.form.get(f'semifinal_team{i}')
+            if team_id:
+                team_ids.append(int(team_id))
         
-        # Sort teams by wins and round difference for seeding
-        playoff_teams.sort(key=lambda x: (x.matches_won, x.rounds_won - x.rounds_lost), reverse=True)
+        if len(team_ids) != 4:
+            flash('Please select exactly 4 teams for semifinals')
+            return redirect(url_for('generate_playoffs'))
         
         # Generate semifinals (BO3)
         current_time = datetime.now()
         semifinal1 = Match(
-            team1_id=playoff_teams[0].id,
-            team2_id=playoff_teams[3].id,
+            team1_id=team_ids[0],
+            team2_id=team_ids[3],
             start_time=current_time,
             stage='semifinal',
             is_bo3=True,
@@ -385,8 +404,8 @@ def generate_playoffs():
         )
         
         semifinal2 = Match(
-            team1_id=playoff_teams[1].id,
-            team2_id=playoff_teams[2].id,
+            team1_id=team_ids[1],
+            team2_id=team_ids[2],
             start_time=current_time + timedelta(hours=1),
             stage='semifinal',
             is_bo3=True,
